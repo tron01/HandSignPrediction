@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <title>Hand Sign Recognition</title>
+</head>
+
+<body class="container text-center mt-4">
+    <h2>Hand Sign Recognition</h2>
+    <div class="d-flex justify-content-center">
+        <video id="video" class="border d-none" width="640" height="480" autoplay></video>
+        <canvas id="canvas" class="border" width="640" height="480"></canvas>
+    </div>
+    <div class="mt-3">
+        <input type="text" id="handSign" class="form-control d-inline w-auto" placeholder="Enter Hand Sign Name">
+        <button id="trainNow" class="btn btn-primary">Train Now</button>
+        <button id="startTrain" class="btn btn-success">Start Training</button>
+        <button id="stopTrain" class="btn btn-danger">Stop Training</button>
+        <button id="predict" class="btn btn-warning">Predict</button>
+    </div>
+    <h4 class="mt-4">Trained Signs</h4>
+    <div id="trainedSigns" class="d-flex flex-wrap justify-content-center"></div>
+
+    <script type="module">
+        const videoElement = document.getElementById('video');
+        const canvasElement = document.getElementById('canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        const trainButton = document.getElementById('trainNow');
+        const startTrainButton = document.getElementById('startTrain');
+        const stopTrainButton = document.getElementById('stopTrain');
+        const predictButton = document.getElementById('predict');
+        const trainedSignsDiv = document.getElementById('trainedSigns');
+
+        let training = false;
+        let currentSign = "";
+        let trainedSigns = {};
+        let isPredicting = false;
+        let predictedText = "";
+
+        function onResults(results) {
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.image) {
+                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            }
+
+            if (results.multiHandLandmarks) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
+                    drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
+
+                    if (training && currentSign) {
+                        captureHandSign(landmarks, currentSign);
+                    }
+                    if (isPredicting) {
+                        predictHandSign(landmarks);
+                    }
+                }
+            }
+
+            canvasCtx.font = "24px Arial";
+            canvasCtx.fillStyle = "#FF0000";
+            canvasCtx.fillText(predictedText, 10, 50);
+        }
+
+        function captureHandSign(landmarks, label) {
+            const keypoints = landmarks.map(point => [point.x, point.y, point.z]);
+            if (!trainedSigns[label]) {
+                trainedSigns[label] = [];
+            }
+            trainedSigns[label].push(keypoints);
+            displayTrainedSigns();
+        }
+
+        function displayTrainedSigns() {
+            trainedSignsDiv.innerHTML = "";
+            Object.keys(trainedSigns).forEach(label => {
+                const div = document.createElement('div');
+                div.classList.add("m-2", "text-center");
+                div.innerHTML = `<p>${label} (${trainedSigns[label].length})</p>`;
+                trainedSignsDiv.appendChild(div);
+            });
+        }
+
+        function predictHandSign(landmarks) {
+            let bestMatch = null;
+            let minDistance = Infinity;
+
+            const currentKeypoints = landmarks.map(point => [point.x, point.y, point.z]);
+
+            Object.keys(trainedSigns).forEach(label => {
+                trainedSigns[label].forEach(trainedKeypoints => {
+                    const distance = euclideanDistance(currentKeypoints, trainedKeypoints);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        bestMatch = label;
+                    }
+                });
+            });
+
+            if (bestMatch) {
+                predictedText = `Predicted: ${bestMatch}`;
+            } else {
+                predictedText = "No match found";
+            }
+        }
+
+        function euclideanDistance(arr1, arr2) {
+            if (arr1.length !== arr2.length) return Infinity;
+            return Math.sqrt(arr1.reduce((sum, point, index) =>
+                sum + Math.pow(point[0] - arr2[index][0], 2) +
+                Math.pow(point[1] - arr2[index][1], 2) +
+                Math.pow(point[2] - arr2[index][2], 2), 0));
+        }
+
+        trainButton.addEventListener('click', () => {
+            currentSign = document.getElementById('handSign').value;
+            if (!currentSign) {
+                alert("Please enter a hand sign name.");
+                return;
+            }
+        });
+
+        startTrainButton.addEventListener('click', () => { training = true; });
+        stopTrainButton.addEventListener('click', () => { training = false; });
+        predictButton.addEventListener('click', () => { isPredicting = !isPredicting; });
+
+        const hands = new Hands({ locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({ image: videoElement }); },
+            width: 640,
+            height: 480
+        });
+        camera.start();
+    </script>
+</body>
+
+</html>
