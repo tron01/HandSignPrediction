@@ -43,7 +43,7 @@ This project is a **Hand Sign Recognition System** using MediaPipe's hand tracki
 ## Installation
 1. Clone this repository:
    ```sh
-   git clone https://github.com/tron01/hand-sign-recognition.git
+   git clone https://github.com/tron01/HandSignPrediction.git
    ```
 2. Open `index.html` in a browser.
 
